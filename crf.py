@@ -9,7 +9,7 @@ from tempfile import NamedTemporaryFile
 import os
 
 def ident(i, idx, all_i):
-    """ the identity feature"""
+    """the identity feature"""
     return i
     
 class CRF:
@@ -20,11 +20,12 @@ class CRF:
         template = template or []
         features.insert(0, ident)
         trainf = NamedTemporaryFile()
-        all_i = [x[0] for x in training_data]
-        # XXX handle (None,None) 
-        for idx,(i,o) in enumerate(training_data):
-            fvalues = [f(i,idx,all_i) for f in features]
-            print >>trainf, " ".join(fvalues + [o])
+        for sequence in training_data:
+            all_i = [x[0] for x in sequence]
+            for idx,(i,o) in enumerate(sequence):
+                fvalues = [f(i,idx,all_i) for f in features]
+                print >>trainf, " ".join(fvalues + [o])
+            print >>trainf # separate sequences by newline
 
         templatef = NamedTemporaryFile()
         for idx,f in enumerate(features):
@@ -38,7 +39,8 @@ class CRF:
             except TypeError:
                 t = (t,)
             print >>templatef, "Ut%d:" % idx + \
-                  "/".join(["%%x[%d,%d]" % (pi, features.index(func)) for func,pi in t])
+                  "/".join(["%%x[%d,%d]" % (pi, features.index(func)) 
+                                for func,pi in t])
         trainf.flush()
         templatef.flush()
 
@@ -57,13 +59,28 @@ if __name__ == '__main__':
     c = CRF("testmodel")
 
     chunkfile = "/u/cce/pkg/CRF++-0.44/example/chunking/train.data"
-    # this ignores newlines!! (we need to keep them for sentence delims)
-    chunking = [l.split() or (None,None) for l in file(chunkfile)]
+    sequences = []
+    cur_seq = []
+    for line in file(chunkfile):
+        line = line.strip()
+        if line:
+            cur_seq.append(line.split())
+        else:
+            sequences.append(cur_seq)
+            cur_seq = []
+    if cur_seq:
+        sequences.append(cur_seq)
 
+    def train_pos_iter():
+        """Just read the training data"""
+        for seq in sequences:
+            for inp, tag, out in seq:
+                yield tag
+    pos_iter = train_pos_iter()
     def pos_tag(i, idx, all_i):
-        return chunking[idx][1]
+        return pos_iter.next()
 
-    ioseq = [(i[0], i[2]) for i in chunking]
+    ioseq = [[(i[0], i[2]) for i in seq] for seq in sequences]
     templ = [(pos_tag, x) for x in range(-2,3)]
     templ.extend( [(ident, x) for x in range(-2,3)] )
 
