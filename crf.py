@@ -23,7 +23,7 @@ class CRF:
         for sequence in training_data:
             all_i = [x[0] for x in sequence]
             for idx,(i,o) in enumerate(sequence):
-                fvalues = [f(i,idx,all_i) for f in features]
+                fvalues = [str(f(i,idx,all_i)) for f in features]
                 print >>trainf, " ".join(fvalues + [o])
             print >>trainf # separate sequences by newline
 
