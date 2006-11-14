@@ -9,6 +9,16 @@ from tempfile import NamedTemporaryFile
 import itertools
 import os
 
+def escaper(token):
+    if token == ' ':
+        return 'space'
+    elif token == '\n':
+        return 'newline'
+    elif token == '\t':
+        return 'tab'
+    else:
+        return repr(token)
+
 def ident(i, idx, all_i):
     """the identity feature"""
     return i
@@ -34,7 +44,7 @@ class CRF:
             except TypeError:
                 t = (t,)
             print >>templatef, "Ut%d:" % idx + \
-                  "/".join(["%%x[%d,%d]" % (pi, self.features.index(func)) 
+                  "/".join(["%%x[%d,%d]" % (pi, self.features.index(func))
                                 for func,pi in t])
         templatef.flush()
         return templatef
@@ -54,7 +64,7 @@ class CRF:
             for idx, item in enumerate(sequence):
                 if training:
                     item, output = item
-                fvalues = [str(f(item, idx, all_i)) for f in self.features]
+                fvalues = [escaper(f(item, idx, all_i)) for f in self.features]
                 if training:
                     fvalues.append(output)
                 print >>featureinputf, " ".join(fvalues)
