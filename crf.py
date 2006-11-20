@@ -5,7 +5,8 @@
 #
 # (c) 2006, david mcclosky & chris erway
 
-from tempfile import NamedTemporaryFile
+from __future__ import division
+from tempfile import NamedTemporaryFile, mkstemp
 import itertools
 import os
 
@@ -24,12 +25,13 @@ def ident(i, idx, all_i):
     return i
     
 class CRF:
-    def __init__(self, model, features, template=None):
+    def __init__(self, model, features, template=None, cost=1):
         self.model = model
         self.features = features[:]
         self.features.insert(0, ident)
         self.template = template or []
         self.templatef = self.make_template()
+        self.cost = cost
 
     def make_template(self):
         templatef = NamedTemporaryFile()
@@ -72,13 +74,14 @@ class CRF:
         featureinputf.flush()
         return featureinputf
 
-    def train(self, training_data):
+    def train(self, training_data, threads=2):
         """training_data is a list of sequences of input and output pairs:
         ((token1, label1), ...)"""
         trainf = self.make_feature_input_file(training_data, training=True)
         # run CRF++
-        os.system("crf_learn -t -p 2 %s %s %s" % (self.templatef.name,
-                                                  trainf.name, self.model))
+        os.system("crf_learn -t -p %d -c %f %s %s %s" % \
+                  (threads, self.cost, self.templatef.name, 
+                   trainf.name, self.model))
 
     def label(self, test_data, labels_only=True):
         """test_data is a list of sequences of input tokens (no output
@@ -119,26 +122,71 @@ class CRF:
         for labelseq, goldseq in itertools.izip(labels, goldgen()):
             yield [(i, o, gold) for (i, o), gold in zip(labelseq, goldseq)]
 
-    def basic_accuracy(self, evaled_seqs):
-        """evaled_seqs should be like output from evaluate(): a list of
-        sequences, where each sequence is
-        [(token1, label1, goldlabel1), (token2, label2, goldlabel2), ...]"""
-        total = 0
-        right = 0
-        seq_total = 0
-        seq_right = 0
-        for sequence in evaled_seqs:
-            cur_seq_right = True
-            for inputtoken, outputlabel, goldlabel in sequence:
-                if outputlabel == goldlabel:
-                    right += 1
-                else:
-                    cur_seq_right = False
-                total += 1
-            seq_total += 1
-            if cur_seq_right:
-                seq_right += 1
-        return right, total, seq_right, seq_total
+def basic_accuracy(evaled_seqs):
+    """evaled_seqs should be like output from evaluate(): a list of
+    sequences, where each sequence is
+    [(token1, label1, goldlabel1), (token2, label2, goldlabel2), ...]"""
+    total = 0
+    right = 0
+    seq_total = 0
+    seq_right = 0
+    for sequence in evaled_seqs:
+        cur_seq_right = True
+        for inputtoken, outputlabel, goldlabel in sequence:
+            if outputlabel == goldlabel:
+                right += 1
+            else:
+                cur_seq_right = False
+            total += 1
+        seq_total += 1
+        if cur_seq_right:
+            seq_right += 1
+    return right, total, seq_right, seq_total
+
+def token_accuracy(evaled_seqs):
+    """evaled_seqs should be like output from evaluate(): a list of
+    sequences, where each sequence is
+    [(token1, label1, goldlabel1), (token2, label2, goldlabel2), ...]"""
+    total = 0
+    right = 0
+    for sequence in evaled_seqs:
+        for inputtoken, outputlabel, goldlabel in sequence:
+            if outputlabel == goldlabel:
+                right += 1
+            total += 1
+    return right / total
+
+def frange(start, end=None, inc=None):
+    "A range function, that does accept float increments..."
+    if end == None:
+        end = start + 0.0
+        start = 0.0
+    if inc == None:
+        inc = 1.0
+    L = []
+    while 1:
+        next = start + len(L) * inc
+        if inc > 0 and next >= end:
+            break
+        elif inc < 0 and next <= end:
+            break
+        L.append(next)
+    return L
+
+def tune_cost_parameter(features, template, accuracyfunc, 
+                        trainset, devset, 
+                        mincost, maxcost, step):
+    models = {} # cost values to CRF objects
+    for cost in frange(mincost, maxcost+step, step):
+        print "training with cost", cost, len(trainset)
+        c = CRF(mkstemp(prefix='crf-', 
+                        suffix="-%s" % cost)[1],
+                features, template, cost)
+        c.train(trainset)
+        score = accuracyfunc(c.evaluate(devset))
+        print cost, score
+        models[cost] = c, score
+    return models
 
 if __name__ == '__main__':
     import optparse, sys
