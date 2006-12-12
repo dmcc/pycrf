@@ -122,6 +122,12 @@ class CRF:
         for labelseq, goldseq in itertools.izip(labels, goldgen()):
             yield [(i, o, gold) for (i, o), gold in zip(labelseq, goldseq)]
 
+   def evaluate_supernaive(self, data, label='none'):
+       """data is of the same form as train(): a list of sequences of
+       input and output pairs: ((token1, label1), ...)"""
+       for seq in data:
+           yield [(i, label, gold) for i, gold in seq]
+
 def basic_accuracy(evaled_seqs):
     """evaled_seqs should be like output from evaluate(): a list of
     sequences, where each sequence is
